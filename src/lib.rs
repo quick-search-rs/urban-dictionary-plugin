@@ -5,7 +5,7 @@ use abi_stable::{
     sabi_trait::prelude::TD_Opaque,
     std_types::{RBox, RStr, RString, RVec},
 };
-use quick_search_lib::{ColoredChar, PluginId, SearchLib, SearchLib_Ref, SearchResult, Searchable, Searchable_TO};
+use quick_search_lib::{ColoredChar, Log, PluginId, SearchLib, SearchLib_Ref, SearchResult, Searchable, Searchable_TO};
 
 static NAME: &str = "Urban Dictionary";
 
@@ -15,22 +15,23 @@ pub fn get_library() -> SearchLib_Ref {
 }
 
 #[sabi_extern_fn]
-fn get_searchable(id: PluginId) -> Searchable_TO<'static, RBox<()>> {
-    let this = UrbanDictionary::new(id);
+fn get_searchable(id: PluginId, logger: quick_search_lib::ScopedLogger) -> Searchable_TO<'static, RBox<()>> {
+    let this = UrbanDictionary::new(id, logger);
     Searchable_TO::from_value(this, TD_Opaque)
 }
 
-#[derive(Debug, Clone)]
 struct UrbanDictionary {
     id: PluginId,
     client: reqwest::blocking::Client,
+    logger: quick_search_lib::ScopedLogger,
 }
 
 impl UrbanDictionary {
-    fn new(id: PluginId) -> Self {
+    fn new(id: PluginId, logger: quick_search_lib::ScopedLogger) -> Self {
         Self {
             id,
             client: reqwest::blocking::Client::new(),
+            logger,
         }
     }
 }
@@ -51,7 +52,7 @@ impl Searchable for UrbanDictionary {
                 }
             }
             Err(e) => {
-                log::error!("failed to get word: {}", e);
+                self.logger.error(&format!("failed to get word: {}", e));
             }
         }
 
@@ -91,12 +92,12 @@ impl Searchable for UrbanDictionary {
         let s = result.extra_info();
         if let Ok::<clipboard::ClipboardContext, Box<dyn std::error::Error>>(mut clipboard) = clipboard::ClipboardProvider::new() {
             if let Ok(()) = clipboard::ClipboardProvider::set_contents(&mut clipboard, s.to_owned()) {
-                log::trace!("copied to clipboard: {}", s);
+                self.logger.trace(&format!("copied to clipboard: {}", s));
             } else {
-                log::error!("failed to copy to clipboard: {}", s);
+                self.logger.error(&format!("failed to copy to clipboard: {}", s));
             }
         } else {
-            log::error!("failed to copy to clipboard: {}", s);
+            self.logger.error(&format!("failed to copy to clipboard: {}", s));
         }
 
         // finish up, above is a clipboard example
